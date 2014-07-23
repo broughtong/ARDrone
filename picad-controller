@@ -1,0 +1,63 @@
+import libardrone
+import pifacecad
+import time
+
+drone = libardrone.ARDrone()
+c = pifacecad.PiFaceCAD()
+
+c.lcd.backlight_off()
+c.lcd.cursor_off()
+c.lcd.blink_off()
+c.lcd.clear()
+
+status = "landed"
+
+drone.reset()
+
+while True:
+
+	if c.switches[5].value == 1:
+
+		if status == "flying":
+
+			drone.land()
+			status = "landed"
+			time.sleep(1)
+
+		else:
+
+			drone.takeoff()
+			status = "flying"
+			time.sleep(1)
+
+	if status == "flying":
+
+		if c.switches[3].value == 1:
+
+			drone.move_forward()
+
+		elif c.switches[0].value == 1:
+
+			drone.move_backward()
+
+		elif c.switches[2].value == 1:
+
+			drone.turn_left()
+
+		elif c.switches[1].value == 1:
+
+			drone.turn_right()
+
+		else:
+
+			drone.hover()
+
+		if c.switches[6].value == 1:
+
+			drone.move_down()
+
+		elif c.switches[7].value == 1:
+
+			drone.move_up()
+
+drone.halt()
