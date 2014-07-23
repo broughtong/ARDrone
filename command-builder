@@ -1,0 +1,465 @@
+import libardrone
+import gtk
+import time
+import threading
+import Queue
+
+gtk.gdk.threads_init()
+
+drone = libardrone.ARDrone()
+
+status = "landed"
+
+commands = []
+
+threadRunning = False
+exitQueue = Queue.Queue()
+
+takeoffTime = 4
+movementTime = 1
+
+class Editor():
+
+	def __init__(self):
+
+		self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
+		self.window.set_position(gtk.WIN_POS_CENTER)
+		self.window.set_size_request(450, 300)
+		self.window.set_title("Editor")
+		self.window.set_resizable(True)
+		self.window.connect("delete_event", self.cb_close_window)
+		self.window.connect("destroy", self.cb_close_window)
+
+		self.mb = gtk.MenuBar()
+
+		filemenu = gtk.Menu()
+		item = gtk.MenuItem("File")
+		item.set_submenu(filemenu)
+
+		new = gtk.MenuItem("New")
+		new.connect("activate", self.cb_new)
+		filemenu.append(new)
+
+		save = gtk.MenuItem("Save")
+		save.connect("activate", self.cb_save)
+		filemenu.append(save)
+
+		load = gtk.MenuItem("Load")
+		load.connect("activate", self.cb_load)
+		filemenu.append(load)
+
+		exit = gtk.MenuItem("Exit")
+		exit.connect("activate", self.cb_close_window)
+		filemenu.append(exit)
+
+		self.mb.append(item)
+
+		vbox = gtk.VBox(False, 0)
+		vbox.pack_start(self.mb, False, False, 0)
+
+		hbox = gtk.HBox(False, 0)
+
+		ivbox = gtk.VBox(False, 3)
+
+		self.but_takeoff = gtk.Button("Takeoff")
+		self.but_takeoff.connect("clicked", self.cb_but_takeoff)
+		ivbox.pack_start(self.but_takeoff, False, False, 0)
+		self.but_land = gtk.Button("Land")
+		self.but_land.connect("clicked", self.cb_but_land)
+		ivbox.pack_start(self.but_land, False, False, 0)
+		self.but_sleep = gtk.Button("Sleep")
+		self.but_sleep.connect("clicked", self.cb_but_sleep)
+		ivbox.pack_start(self.but_sleep, False, False, 0)
+
+		align = gtk.Alignment(0.0, 0.0, 1.0, 1.0)
+		ivbox.pack_start(align, True, True, 0)
+		
+		self.but_reset = gtk.Button("Reset Drone")
+		self.but_reset.connect("clicked", self.cb_but_reset)
+		ivbox.pack_end(self.but_reset, False, False, 0)
+		self.but_stop = gtk.Button("Stop")
+		self.but_stop.set_sensitive(False)
+		self.but_stop.connect("clicked", self.cb_but_stop)
+		ivbox.pack_end(self.but_stop, False, False, 0)
+		self.but_run = gtk.Button("Run")
+		self.but_run.connect("clicked", self.cb_but_run)
+		ivbox.pack_end(self.but_run, False, False, 0)
+
+		valign = gtk.Alignment(0.0, 0.0, 0.0, 1.0)
+		valign.add(ivbox)
+
+		hbox.pack_start(valign, False, False, 3)
+
+		sw = gtk.ScrolledWindow()
+		sw.set_sensitive(False)
+		sw.set_shadow_type(gtk.SHADOW_ETCHED_IN)
+		sw.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
+
+		self.commandBox = gtk.TextView()
+
+		sw.add(self.commandBox)
+
+		halign = gtk.Alignment(0.0, 0.0, 1.0, 1.0)
+
+		halign.add(sw)
+
+		hbox.pack_start(halign, True, True, 3)
+
+		v1Box = gtk.VBox(True, 3)
+
+		self.but_m_u = gtk.Button("Move Up")
+		self.but_m_u.connect("clicked", self.cb_but_m_u)
+		v1Box.pack_start(self.but_m_u, False, False, 0)
+		self.but_m_d = gtk.Button("Move Down")
+		self.but_m_d.connect("clicked", self.cb_but_m_d)
+		v1Box.pack_start(self.but_m_d, False, False, 0)
+		self.but_m_f = gtk.Button("Move Forward")
+		self.but_m_f.connect("clicked", self.cb_but_m_f)
+		v1Box.pack_start(self.but_m_f, False, False, 0)
+		self.but_m_b = gtk.Button("Move Backwards")
+		self.but_m_b.connect("clicked", self.cb_but_m_b)
+		v1Box.pack_start(self.but_m_b, False, False, 0)
+		self.but_m_l = gtk.Button("Move Left")
+		self.but_m_l.connect("clicked", self.cb_but_m_l)
+		v1Box.pack_start(self.but_m_l, False, False, 0)
+		self.but_m_r = gtk.Button("Move Right")
+		self.but_m_r.connect("clicked", self.cb_but_m_r)
+		v1Box.pack_start(self.but_m_r, False, False, 0)
+		self.but_r_l = gtk.Button("Rotate Left")
+		self.but_r_l.connect("clicked", self.cb_but_r_l)
+		v1Box.pack_start(self.but_r_l, False, False, 0)
+		self.but_r_r = gtk.Button("Rotate Right")
+		self.but_r_r.connect("clicked", self.cb_but_r_r)
+		v1Box.pack_start(self.but_r_r, False, False, 0)
+
+		v1align = gtk.Alignment(0.0, 0.0, 0.0, 0.0)
+		v1align.add(v1Box)
+
+		hbox.pack_start(v1align, False, False, 3)
+
+		vbox.pack_start(hbox, True, True, 3)
+
+		self.window.add(vbox)
+
+		self.window.show_all()
+
+	def cb_new(self, widget = None, button = None):
+
+		self.cb_but_stop()
+		commands[:] = []
+		buffer = self.commandBox.get_buffer()
+		buffer.set_text('')
+
+	def cb_save(self, widget = None, button = None):
+
+		print("save")
+
+	def cb_load(self, widget = None, button = None):
+
+		self.cb_but_stop()
+		print("load")
+
+	def cb_close_window(self, widget = None, button = None):
+
+		self.cb_but_stop()
+		time.sleep(0.5)
+		drone.halt()
+		gtk.main_quit()
+		
+	def cb_but_takeoff(self, widget = None, button = None):
+
+		commands.append("takeoff")
+		buffer = self.commandBox.get_buffer()
+		buffer.insert_at_cursor("Takeoff\n")
+
+	def cb_but_land(self, widget = None, button = None):
+
+		commands.append("land")
+		buffer = self.commandBox.get_buffer()
+		buffer.insert_at_cursor("Land\n")
+
+	def cb_but_sleep(self, widget = None, button = None):
+
+		commands.append("sleep")
+		buffer = self.commandBox.get_buffer()
+		buffer.insert_at_cursor("Sleep\n")
+
+	def cb_but_run(self, widget = None, button = None):
+		global threadRunning
+		if threadRunning == False:
+
+			self.but_stop.set_sensitive(True)
+			self.but_run.set_sensitive(False)
+			self.but_reset.set_sensitive(False)
+			self.but_takeoff.set_sensitive(False)
+			self.but_land.set_sensitive(False)
+			self.but_sleep.set_sensitive(False)
+
+			self.but_m_f.set_sensitive(False)
+			self.but_m_b.set_sensitive(False)
+			self.but_m_l.set_sensitive(False)
+			self.but_m_r.set_sensitive(False)
+			self.but_r_l.set_sensitive(False)
+			self.but_r_r.set_sensitive(False)
+
+			self.thread = controlThread(exitQueue, commands)
+			self.thread.start()
+			threadRunning = True
+
+	def cb_but_stop(self, widget = None, button = None):
+		global threadRunning
+		if threadRunning == True:
+
+			self.but_stop.set_sensitive(False)
+			self.but_run.set_sensitive(True)
+			self.but_reset.set_sensitive(True)
+			self.but_takeoff.set_sensitive(True)
+			self.but_land.set_sensitive(True)
+			self.but_sleep.set_sensitive(True)
+
+			self.but_m_f.set_sensitive(True)
+			self.but_m_b.set_sensitive(True)
+			self.but_m_l.set_sensitive(True)
+			self.but_m_r.set_sensitive(True)
+			self.but_r_l.set_sensitive(True)
+			self.but_r_r.set_sensitive(True)
+
+			threadRunning = False
+			exitQueue.put("Stop")
+			time.sleep(0.3)
+
+	def cb_but_reset(self, widget = None, button = None):
+
+		#print("reseting")
+		drone.reset()
+
+	def cb_but_m_f(self, widget = None, button = None):
+
+		commands.append("mf")
+		buffer = self.commandBox.get_buffer()
+		buffer.insert_at_cursor("Move Forward\n")
+
+	def cb_but_m_b(self, widget = None, button = None):
+
+		commands.append("mb")
+		buffer = self.commandBox.get_buffer()
+		buffer.insert_at_cursor("Move Backwards\n")
+
+	def cb_but_m_l(self, widget = None, button = None):
+
+		commands.append("ml")
+		buffer = self.commandBox.get_buffer()
+		buffer.insert_at_cursor("Move Left\n")
+
+	def cb_but_m_r(self, widget = None, button = None):
+
+		commands.append("mr")
+		buffer = self.commandBox.get_buffer()
+		buffer.insert_at_cursor("Move Right\n")
+
+	def cb_but_r_l(self, widget = None, button = None):
+
+		commands.append("rl")
+		buffer = self.commandBox.get_buffer()
+		buffer.insert_at_cursor("Rotate Left\n")
+
+	def cb_but_r_r(self, widget = None, button = None):
+
+		commands.append("rr")
+		buffer = self.commandBox.get_buffer()
+		buffer.insert_at_cursor("Rotate Right\n")
+
+	def cb_but_m_u(self, widget = None, button = None):
+
+		commands.append("mu")
+		buffer = self.commandBox.get_buffer()
+		buffer.insert_at_cursor("Move Up\n")
+
+	def cb_but_m_d(self, widget = None, button = None):
+
+		commands.append("md")
+		buffer = self.commandBox.get_buffer()
+		buffer.insert_at_cursor("Move Down\n")
+
+class controlThread(threading.Thread):
+
+	def __init__(self, exitQueue, commandList):
+
+		threading.Thread.__init__(self)
+
+		self.exitQueue = exitQueue
+		self.commandList = commandList
+
+	def run(self):
+
+		global drone, takeoffTime, movementTime
+
+		for i in self.commandList:
+
+			if i == "takeoff":
+
+				drone.takeoff()
+				print("takeoff")
+
+				for t in xrange(0, takeoffTime * 4):
+	
+					time.sleep(0.25)
+					if self.check():
+						return
+
+				print("taken off")
+
+			elif i == "land":
+
+				drone.land()
+				print("land")
+
+				for t in xrange(0, takeoffTime * 4):
+	
+					time.sleep(0.25)
+					if self.check():
+						return
+
+				print("landed")
+
+			elif i == "sleep":
+
+				pass
+				print("sleep")
+
+				for t in xrange(0, movementTime * 4):
+	
+					time.sleep(0.25)
+					if self.check():
+						return
+	
+				print("moved")
+
+			elif i == "mf":
+
+				drone.move_forward()
+				print("mf")
+
+				for t in xrange(0, movementTime * 4):
+	
+					time.sleep(0.25)
+					if self.check():
+						return
+	
+				print("moved")
+
+			elif i == "mb":
+
+				drone.move_backward()
+				print("mb")
+
+				for t in xrange(0, movementTime * 4):
+	
+					time.sleep(0.25)
+					if self.check():
+						return
+	
+				print("moved")
+
+			elif i == "ml":
+
+				drone.move_left()
+				print("ml")
+
+				for t in xrange(0, movementTime * 4):
+	
+					time.sleep(0.25)
+					if self.check():
+						return
+	
+				print("moved")
+
+			elif i == "mr":
+
+				drone.move_right()
+				print("mr")
+
+				for t in xrange(0, movementTime * 4):
+	
+					time.sleep(0.25)
+					if self.check():
+						return
+	
+				print("moved")
+
+			elif i == "rl":
+
+				drone.turn_left()
+				print("rl")
+
+				for t in xrange(0, movementTime * 4):
+	
+					time.sleep(0.25)
+					if self.check():
+						return
+	
+				print("moved")
+
+			elif i == "rr":
+
+				drone.turn_right()
+				print("rr")
+
+				for t in xrange(0, movementTime * 4):
+	
+					time.sleep(0.25)
+					if self.check():
+						return
+	
+				print("moved")
+
+			elif i == "mu":
+
+				drone.move_up()
+				#print("mu")
+
+				for t in xrange(0, movementTime * 4):
+	
+					time.sleep(0.25)
+					if self.check():
+						return
+	
+				print("moved")
+
+			elif i == "md":
+
+				drone.move_down()
+				print("md")
+
+				for t in xrange(0, movementTime * 4):
+	
+					time.sleep(0.25)
+					if self.check():
+						return
+	
+				print("moved")
+
+			drone.hover()
+
+		return
+
+	def check(self):
+
+		try:
+
+			message = self.exitQueue.get(False)
+
+			if message == "Stop":
+
+				drone.hover()
+				print("stopping")
+				drone.land()
+				return True
+
+		except Queue.Empty:
+
+			return False
+
+if __name__ == "__main__":
+	window = Editor()
+	gtk.main()
